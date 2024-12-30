@@ -6,6 +6,8 @@ import scipy.io as sio
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import roc_auc_score
 import dgl
+import json
+import os
 
 def sparse_to_tuple(sparse_mx, insert_batch=False):
     """Convert sparse matrix to tuple representation."""
@@ -53,10 +55,10 @@ def normalize_adj(adj):
     """Symmetrically normalize adjacency matrix."""
     adj = sp.coo_matrix(adj)
     rowsum = np.array(adj.sum(1))
-    d_inv_sqrt = np.power(rowsum, -1).flatten()
+    d_inv_sqrt = np.power(rowsum, -0.5).flatten()
     d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
     d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
-    return d_mat_inv_sqrt.dot(adj).tocoo()
+    return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
 
 
 def sparse_mx_to_torch_sparse_tensor(sparse_mx):
@@ -78,9 +80,9 @@ def x_svd(data, out_dim):
     return newdata
 
 
-def load_mat(dataset):
+def load_mat(dataset, dir="./Datasets/"):
     """Load .mat dataset."""
-    data = sio.loadmat("./Datasets/{}.mat".format(dataset))
+    data = sio.loadmat("{}{}.mat".format(dir, dataset))
     label = data['Label'] if ('Label' in data) else data['gnd']
     attr = data['Attributes'] if ('Attributes' in data) else data['X']
     network = data['Network'] if ('Network' in data) else data['A']
@@ -159,3 +161,34 @@ def reg_sim(feature1, feature2):
     return non_diag_sim
 
 
+
+def read_json(model, shot, json_dir):
+    # Construct the filename based on the dataset name and shot
+    filename = f"{json_dir}/{model}_{shot}.json"
+
+    # Check if the file exists
+    if os.path.exists(filename):
+        # Read the JSON file and return the dictionary
+        with open(filename, 'r') as file:
+            try:
+                data = json.load(file)
+                return data
+            except json.JSONDecodeError as e:
+                print(f"Error decoding JSON file {filename}: {e}")
+                return None
+    else:
+        print(f"JSON file {filename} not found.")
+        return None
+    
+def test_eval(labels, probs):
+    score = {}
+    with torch.no_grad():
+        if torch.is_tensor(labels):
+            labels = labels.cpu().numpy()
+        if torch.is_tensor(probs):
+            probs = probs.cpu().numpy()
+        auc = roc_auc_score(labels, probs)
+        prc = average_precision_score(labels, probs)
+        score['AUROC'] = auc
+        score['AUPRC'] = prc
+    return score

@@ -4,12 +4,15 @@ from utils import *
 from torch import Tensor
 from torch.nn.modules.module import Module
 from torch_geometric.nn.inits import glorot
+from torch_geometric.data import Data
+from torch_geometric.utils import to_dense_adj
+
 
 class GCN(nn.Module):
-    def __init__(self, in_ft, out_ft, act, bias=True):
+    def __init__(self, in_ft, out_ft, act, bias=False):
         super(GCN, self).__init__()
-        self.fc = nn.Linear(in_ft, out_ft, bias=False)
-        self.bn = nn.BatchNorm1d(out_ft)
+        # self.fc = nn.Linear(in_ft, out_ft, bias=False)
+        # self.bn = nn.BatchNorm1d(out_ft)
         self.act = nn.PReLU() if act == 'prelu' else act
 
         if bias:
@@ -28,7 +31,8 @@ class GCN(nn.Module):
                 m.bias.data.fill_(0.0)
 
     def forward(self, seq, adj=None, sparse=False):
-        out = self.fc(seq)
+        # out = self.fc(seq)
+        out = seq
         if adj is not None:
             if sparse:
                 out = torch.spmm(adj, out)
@@ -36,8 +40,8 @@ class GCN(nn.Module):
                 out = torch.mm(adj, out)
         if self.bias is not None:
             out += self.bias
-        out = self.bn(out)
-        out = self.act(out)
+        # out = self.bn(out)
+        # out = self.act(out)
         return out
 
 
@@ -61,6 +65,41 @@ class Model(nn.Module):
                 m.bias.data.fill_(0.0)
 
 
+class PreTrainModel(nn.Module):
+    def __init__(self, in_feats, h_feats, activation="ReLu", num_hops=4, **kwargs):
+        super(PreTrainModel, self).__init__()
+        self.layers = nn.ModuleList()
+        self.act = getattr(nn, activation)()
+        self.num_hops = num_hops
+        num_layers = num_hops + 1
+        if num_layers == 0:
+            return
+        self.layers.append(GCN(in_feats, h_feats, self.act))
+        for _ in range(1, num_layers - 1):
+            self.layers.append(GCN(h_feats, h_feats, self.act))
+
+    def forward(self, data: Data):
+
+        x_list = [data.x]
+        if not hasattr(data, "adj"):
+            data.adj = to_dense_adj(data.edge_index)
+
+        for _, layer in enumerate(self.layers):
+            x_list.append(layer(x_list[-1], data.adj))
+
+        return x_list
+
+    def reset_parameters(self,):
+        for m in self.modules():
+            self.weights_init(m)
+
+    def weights_init(self, m):
+        if isinstance(m, nn.Linear):
+            torch.nn.init.xavier_uniform_(m.weight.data)
+            if m.bias is not None:
+                m.bias.data.fill_(0.0)
+
+
 class SimplePrompt(nn.Module):
     def __init__(self, in_channels: int):
         super(SimplePrompt, self).__init__()
@@ -72,7 +111,8 @@ class SimplePrompt(nn.Module):
 
     def add(self, x: Tensor):
         return x + self.global_emb
-    
+
+
 class GPFplusAtt(nn.Module):
     def __init__(self, in_channels: int, p_num: int):
         super(GPFplusAtt, self).__init__()
@@ -89,6 +129,7 @@ class GPFplusAtt(nn.Module):
         weight = F.softmax(score, dim=1)
         p = torch.mm(weight, self.p_list)
         return x + p
+
 
 class Projection(nn.Module):
     def __init__(self, hidden_dim):

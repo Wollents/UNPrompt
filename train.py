@@ -19,9 +19,11 @@ parser.add_argument('--embedding_dim', type=int, default=128)
 parser.add_argument('--edge_drop_prob', type=float, default=0.2)
 parser.add_argument('--feat_drop_prob', type=float, default=0.3)
 parser.add_argument('--lamda', type=float, default=0.2)
-parser.add_argument('--epochs', type=int, default=500)
+parser.add_argument('--epochs', type=int, default=40)
 parser.add_argument('--unifeat', type=int, default=8)
 parser.add_argument('--numprompts', type=int, default=10)
+parser.add_argument('--datasets_dir', type=str, default='./my_datasets/')
+parser.add_argument('--pretrain_batch_size', type=int, default=2048)
 args = parser.parse_args()
 
 dgl.random.seed(args.seed)
@@ -38,7 +40,8 @@ torch.backends.cudnn.benchmark = False
 
 # Load and preprocess data
 def loaddata(dataset, args, device):
-    adj, features,  ano_label, str_ano_label, attr_ano_label = load_mat(dataset)
+    # TODO：这里的降维方法可以改为ARC的方法
+    adj, features,  ano_label, str_ano_label, attr_ano_label = load_mat(dataset, args.datasets_dir)
     adj = adj.astype(np.float32)
     features = features.todense()
     features = torch.FloatTensor(features)   
@@ -66,9 +69,11 @@ def loaddata(dataset, args, device):
     features = features.to(device)
     return adj_withloop_won, adj_withloop, adj_woself, features, ano_label
 
-traindatasets = ['Facebook']
-targdataset = ['Amazon', 'Reddit']
-
+# traindatasets = ['Facebook_un']
+# targdataset = ['Amazon_un', 'Reddit_un']
+traindatasets = ['pubmed', 'Flickr', 'questions', 'YelpChi']
+targdataset = ['cora', 'citeseer', 'ACM', 'BlogCatalog',
+               'Facebook', 'weibo', 'Reddit', 'Amazon', 'cs', 'photo', 'tolokers']
 adj_withloop_won_train = []
 adj_withloop_train = []
 adj_woself_train = []
@@ -119,7 +124,7 @@ for _ in range(1):
             node_emb_mlp = model(modified_feature, None)
             node_emb_nei = proj(node_emb_nei)
             node_emb_mlp = proj(node_emb_mlp)
-
+            # 这里可以使用 伪标签的办法，并且替换为ARC的方法
             loss = completionloss(node_emb_nei, node_emb_mlp, ano_label)
             
             loss.backward()

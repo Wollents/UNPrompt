@@ -1,0 +1,7 @@
+__pycache__/
+dataset/*.npz
+Datasets/
+my_datasets/
+datasets_gen/
+results/
+model_save/

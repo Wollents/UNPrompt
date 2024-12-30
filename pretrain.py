@@ -3,6 +3,9 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from utils import *
+from torch_geometric.data import Data
+from tqdm import tqdm
+from model import Model
 
 
 def drop_feature(x, drop_prob):
@@ -42,7 +45,13 @@ class ModelGrace(nn.Module):
         self.fc2 = torch.nn.Linear(num_proj_hidden, num_hidden)
 
     def forward(self, features, adj):
-        output = self.model(features, adj)
+        output = None
+        if isinstance(self.model, Model):
+            output = self.model(features, adj)
+        else:
+            output = self.model(Data(x=features, adj=adj))
+        if isinstance(output, list):
+            output = output[-1]
         Z = F.elu(self.fc1(output))
         Z = self.fc2(Z)
         return Z
@@ -85,15 +94,16 @@ class ModelGrace(nn.Module):
 
 
 def traingrace(model, adj_withloop_won_train, adj_withloop_train, features_train, args, device):
-    batch_size = None
+    batch_size = args.pretrain_batch_size
     drop_edge_prob = args.edge_drop_prob
     drop_feature_prob = args.feat_drop_prob
-    epochs = 200
+    epochs = args.epochs
     lr = 1e-3
     gracemodel = ModelGrace(model, num_hidden=args.embedding_dim, num_proj_hidden=2*args.embedding_dim)
     optimizer = torch.optim.Adam(gracemodel.parameters(), lr=lr, weight_decay=1e-5)
     gracemodel = gracemodel.to(device)
-    for epoch in range(epochs):
+    tbar = tqdm(range(epochs), desc="Pretrain")
+    for epoch in tbar:
         for dataset in range(len(features_train)):
             gracemodel.train()
             optimizer.zero_grad()
@@ -108,10 +118,13 @@ def traingrace(model, adj_withloop_won_train, adj_withloop_train, features_train
                 adj_aug = adj_aug.to(device)
             else:
                 adj_aug = adj_withloop
-
+            # TODO： 这里可以修改成异常可感知的对比学习方法
+            
             Z1 = gracemodel(features, adj_withloop)
             Z2 = gracemodel(feat_aug, adj_aug)
             loss = gracemodel.loss(Z1, Z2, batch_size=batch_size)
             loss = loss.mean()
             loss.backward()
             optimizer.step()
+            tbar.set_postfix(epoch=epoch, dataset=dataset, loss=loss)
+        tbar.update()
