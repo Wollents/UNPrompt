@@ -202,7 +202,6 @@ for t in range(5):
         torch.save(prompts_model.state_dict(), model_load_path)
         torch.cuda.empty_cache()
     # eval_prompts
-    break
     test_score_list = {}
     prompts_model.eval()
     for te_data in prompts_data_test:

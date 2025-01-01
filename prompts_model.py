@@ -64,21 +64,26 @@ class Prompts(nn.Module):
 
     def get_subgraph_score(self, X, prompt_mask, graph, model, multi_round=3, batch_size=1024):
         all_index = torch.nonzero(prompt_mask == False).squeeze(1).tolist()
-        batch_num = len(all_index) // batch_size + 1
+        if batch_size is None:
+            batch_size = len(all_index)
+
+        batch_num = len(all_index) // batch_size
+
         multi_round_ano_score = np.zeros((multi_round, graph.num_nodes))
-        
+
         tbar = tqdm(range(multi_round), desc="Getting subgraph score")
         for round in tbar:
             random.shuffle(all_index)
+            # batch_num = 2 batch_idx = 0
             dgl_graph = self.get_dgl_graph(graph)
             for batch_idx in range(batch_num):
                 is_final_batch = (batch_idx == (batch_num - 1))
-               
+
                 if not is_final_batch:
                     query_indices = all_index[batch_idx * batch_size: (batch_idx + 1) * batch_size]
                 else:
                     query_indices = all_index[batch_idx * batch_size:]
-                
+
                 subgraph_indices = self.generate_rwr_subgraph(dgl_graph, 4, query_indices, X.device)
                 subgraph_emb = self.get_subgraph_embedding(model, subgraph_indices, graph)
                 # H_q
@@ -90,9 +95,10 @@ class Prompts(nn.Module):
                 multi_round_ano_score[round, query_indices] = query_score.detach().cpu().numpy()
             tbar.set_postfix(test_dataset=graph.name)
             tbar.update()
-            
+
         torch.cuda.empty_cache()
-        return np.mean(multi_round_ano_score[:, all_index], axis=0)
+        ori_index = torch.nonzero(prompt_mask == False).squeeze(1).tolist()
+        return np.mean(multi_round_ano_score[:, ori_index], axis=0)
 
     def get_dgl_graph(self, data):
         if isinstance(data, Data):
@@ -129,7 +135,7 @@ class Prompts(nn.Module):
                 if (len(subv[i]) <= reduced_size) and (retry_time > 10):
                     subv[i] = (subv[i] * reduced_size)
             # print(subv[i])
-            random.shuffle(subv[i])
+            random.shuffle(subv[i][1:])
             subv[i] = subv[i][:reduced_size]
 
         return subv
