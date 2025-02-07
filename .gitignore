@@ -5,3 +5,6 @@ my_datasets/
 datasets_gen/
 results/
 model_save/
+ablation/
+score_save/
+score_save_ori_copy/

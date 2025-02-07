@@ -33,6 +33,7 @@ parser.add_argument('--shot', type=int, default=10)
 parser.add_argument('--pretrain_batch_size', type=int, default=2048)
 parser.add_argument('--test_sample_round', type=int, default=50)
 parser.add_argument('--save_pt_dir', type=str, default='./model_save/')
+parser.add_argument('--score_pt_save', type=str, default='./score_save/')
 args = parser.parse_args()
 
 prompts_model_config = {
@@ -218,12 +219,33 @@ for t in range(5):
         query_scores = prompts_model.cross_attn.get_test_score(residual_embed, test_graph.shot_mask,
                                                                test_graph.ano_labels)
         query_scores = query_scores.detach().cpu().numpy()
+        
+        prefix_dir = args.score_pt_save + test_data.name + '/seed_' + str(seed) + '/'
+        if not os.path.exists(prefix_dir):
+            os.makedirs(prefix_dir)
+        
+        query_score_save_path = prefix_dir + 'query_score' + '.npy'
+        np.save(query_score_save_path, query_scores)
+
         subgraph_score = prompts_model.get_subgraph_score(residual_embed, test_graph.shot_mask, test_graph, model, multi_round=args.test_sample_round)
         
+        # 存储子图分数
+        subgraph_score_save_path =  prefix_dir + 'subgraph_round_' + str(args.test_sample_round) + '_score.npy'
+        np.save(subgraph_score_save_path, subgraph_score)
+        
+        # 存储label
+        labels_save_path = prefix_dir + 'labels_subgraph_round_' + str(args.test_sample_round) + '.npy'
+        
+        np.save(labels_save_path, query_labels.detach().cpu().numpy())
+        
+        # 存储shot_mask
+        shot_idx_save_path = prefix_dir + 'shot_idx.npy'
+        np.save(shot_idx_save_path, test_graph.shot_idx.detach().cpu().numpy())
+
         max_auc = 0
         max_prc = 0
         index = 0
-        for i in np.arange(0,1,0.1):
+        for i in np.arange(0, 1.1, 0.1):
             test_score = test_eval(query_labels, query_scores + subgraph_score * i)
             if test_score['AUROC'] > max_auc:
                 max_auc = test_score['AUROC']
@@ -276,5 +298,5 @@ for test_data_name in auc_mean_dict:
     print('-' * 50 + test_data_name + '-' * 50)
     end = '-' * 50 + "end" + test_data_name + '-' * 50
     print('str_result', str_result)
-    with open(f'results/{args.dataset}_my_test.txt', 'a') as f:
+    with open(f'results/{args.dataset}_my_test_250101.txt', 'a') as f:
         f.write('{}\n{}\n{}\n'.format(line, str_result, end))

@@ -63,6 +63,10 @@ class Prompts(nn.Module):
         return loss
 
     def get_subgraph_score(self, X, prompt_mask, graph, model, multi_round=3, batch_size=1024):
+        multi_round_ano_score, ori_index = self.get_subgraph_score_for_multi_round(X, prompt_mask, graph, model, multi_round=3, batch_size=1024)
+        return np.mean(multi_round_ano_score[:, ori_index], axis=0)
+
+    def get_subgraph_score_for_multi_round(self, X, prompt_mask, graph, model, multi_round=3, batch_size=1024):
         all_index = torch.nonzero(prompt_mask == False).squeeze(1).tolist()
         if batch_size is None:
             batch_size = len(all_index)
@@ -98,7 +102,7 @@ class Prompts(nn.Module):
 
         torch.cuda.empty_cache()
         ori_index = torch.nonzero(prompt_mask == False).squeeze(1).tolist()
-        return np.mean(multi_round_ano_score[:, ori_index], axis=0)
+        return multi_round_ano_score, ori_index
 
     def get_dgl_graph(self, data):
         if isinstance(data, Data):
